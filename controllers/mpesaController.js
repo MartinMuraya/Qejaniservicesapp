@@ -1,5 +1,6 @@
 // controllers/mpesaController.js
 import axios from "axios";
+import mongoose from "mongoose";
 import Provider from "../models/Provider.js";
 import Payment from "../models/Payment.js";
 import AdminEarnings from "../models/AdminEarnings.js";
@@ -21,7 +22,7 @@ const getAccessToken = async () => {
   return res.data.access_token;
 };
 
-// STK PUSH — NOW WORKS WITH MULTIPLE PROVIDERS
+// STK PUSH — Works with multiple providers
 export const stkPush = async (req, res) => {
   const { phone, amount } = req.body;
   const providerId = req.query.providerId?.trim();
@@ -31,12 +32,11 @@ export const stkPush = async (req, res) => {
     return res.status(400).json({ message: "Phone, amount, and providerId are required" });
   }
 
-  // --- PHONE FORMATTING & VALIDATION ---
-  let formattedPhone = phone.toString().replace(/\D/g, ""); // Remove non-digits
+  // Phone formatting & validation
+  let formattedPhone = phone.toString().replace(/\D/g, "");
   if (formattedPhone.startsWith("0")) formattedPhone = "254" + formattedPhone.slice(1);
   if (formattedPhone.startsWith("+254")) formattedPhone = formattedPhone.slice(1);
 
-  // Validate: must be 2547XXXXXXXX
   if (!/^2547[1-9]\d{7}$/.test(formattedPhone)) {
     return res.status(400).json({ 
       message: "Invalid phone. Must be 07XXXXXXXX or 2547XXXXXXXX" 
@@ -63,8 +63,8 @@ export const stkPush = async (req, res) => {
         PartyA: formattedPhone,
         PartyB: process.env.MPESA_SHORTCODE,
         PhoneNumber: formattedPhone,
-        CallBackURL: process.env.MPESA_CALLBACK_URL, // Clean URL
-        AccountReference: `PROV_${providerId}`,      // Pass providerId safely
+        CallBackURL: process.env.MPESA_CALLBACK_URL,
+        AccountReference: `PROV_${providerId}`,
         TransactionDesc: "Payment to Provider",
       },
       {
@@ -90,7 +90,7 @@ export const stkPush = async (req, res) => {
   }
 };
 
-// CALLBACK — GET providerId FROM AccountReference
+// CALLBACK — providerId converted to ObjectId
 export const stkCallback = async (req, res) => {
   const callbackData = req.body.Body?.stkCallback;
 
@@ -121,12 +121,13 @@ export const stkCallback = async (req, res) => {
       return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
     }
 
-    const providerId = accountRef.replace("PROV_", "");
+    const providerId = mongoose.Types.ObjectId(accountRef.replace("PROV_", "")); // ← FIXED
 
     const commissionRate = 0.10;
     const commission = Math.round(amount * commissionRate);
     const providerAmount = amount - commission;
 
+    // Save Payment Record
     const payment = await Payment.create({
       providerId,
       amount,
@@ -137,8 +138,10 @@ export const stkCallback = async (req, res) => {
       status: "paid",
     });
 
+    // Credit Provider Wallet
     await Provider.findByIdAndUpdate(providerId, { $inc: { walletBalance: providerAmount } });
 
+    // Record Admin Earnings
     await AdminEarnings.create({ providerId, paymentId: payment._id, amount: commission });
 
     console.log(`Payment Success! Provider ${providerId} gets ${providerAmount}, Admin gets ${commission}`);

@@ -5,6 +5,10 @@ import connectDB from "./config/db.js";   // <-- IMPORTANT
 import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
 import mpesaRoutes from './routes/mpesaRoutes.js';
+import dataRoutes from "./routes/dataRoutes.js";
+import serviceRoutes from "./routes/serviceRoutes.js";
+import providerRoutes from "./routes/providerRoutes.js";
+import orderRoutes from "./routes/orderRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -16,6 +20,12 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/mpesa', mpesaRoutes);
+
+app.use("/api/data", dataRoutes);
+
+app.use("/api/services", serviceRoutes);
+app.use("/api/providers", providerRoutes);
+app.use("/api/orders", orderRoutes);
 
 // Test route
 app.get('/', (req, res) => {
