@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import connectDB from "./config/db.js";   // <-- IMPORTANT
 import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
 import mpesaRoutes from './routes/mpesaRoutes.js';
@@ -21,9 +22,12 @@ app.get('/', (req, res) => {
   res.send('Backend API is running');
 });
 
-// Start server & connect MongoDB
+// Start server
 const PORT = process.env.PORT || 5000;
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => app.listen(PORT, () => console.log(`Server running on port ${PORT}`)))
-  .catch(err => console.error(err));
+// CONNECT DB
+connectDB();   
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

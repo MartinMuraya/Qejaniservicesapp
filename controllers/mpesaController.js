@@ -1,69 +1,56 @@
+// controllers/mpesaController.js
 import axios from "axios";
-import dotenv from "dotenv";
-dotenv.config();
+import Provider from "../models/Provider.js";
+import Payment from "../models/Payment.js";
+import AdminEarnings from "../models/AdminEarnings.js";
 
-// Helper to get current timestamp in YYYYMMDDHHMMSS format
+// Helper: Timestamp YYYYMMDDHHmmss
 const getTimestamp = () => {
   const date = new Date();
-  const YYYY = date.getFullYear();
-  const MM = String(date.getMonth() + 1).padStart(2, "0");
-  const DD = String(date.getDate()).padStart(2, "0");
-  const HH = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  const SS = String(date.getSeconds()).padStart(2, "0");
-  return `${YYYY}${MM}${DD}${HH}${mm}${SS}`;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 };
 
-// Helper to get access token
+// Helper: Get M-Pesa Access Token
 const getAccessToken = async () => {
-  try {
-    const auth = Buffer.from(
-      `${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`
-    ).toString("base64");
-
-    const response = await axios.get(
-      "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
-      {
-        headers: {
-          Authorization: `Basic ${auth}`,
-        },
-      }
-    );
-    return response.data.access_token;
-  } catch (error) {
-    throw new Error("Failed to get access token: " + (error.response?.data?.errorMessage || error.message));
-  }
+  const auth = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString("base64");
+  const res = await axios.get(
+    "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
+    { headers: { Authorization: `Basic ${auth}` } }
+  );
+  return res.data.access_token;
 };
 
-// STK Push Controller
+// STK PUSH — NOW WORKS WITH MULTIPLE PROVIDERS
 export const stkPush = async (req, res) => {
   const { phone, amount } = req.body;
+  const providerId = req.query.providerId?.trim();
 
-  if (!phone || !amount) {
-    return res.status(400).json({ message: "Phone and amount are required" });
+  // Validation
+  if (!phone || !amount || !providerId) {
+    return res.status(400).json({ message: "Phone, amount, and providerId are required" });
   }
 
-  // Format phone to 254xxxxxxxxx
-  let formattedPhone = phone.toString();
-  if (formattedPhone.startsWith("0")) {
-    formattedPhone = `254${formattedPhone.slice(1)}`;
-  } else if (formattedPhone.startsWith("+254")) {
-    formattedPhone = formattedPhone.slice(1);
-  }
-  if (!formattedPhone.startsWith("254") || formattedPhone.length !== 12) {
-    return res.status(400).json({ message: "Phone must be in 254xxxxxxxxx format (12 digits)" });
+  // --- PHONE FORMATTING & VALIDATION ---
+  let formattedPhone = phone.toString().replace(/\D/g, ""); // Remove non-digits
+  if (formattedPhone.startsWith("0")) formattedPhone = "254" + formattedPhone.slice(1);
+  if (formattedPhone.startsWith("+254")) formattedPhone = formattedPhone.slice(1);
+
+  // Validate: must be 2547XXXXXXXX
+  if (!/^2547[1-9]\d{7}$/.test(formattedPhone)) {
+    return res.status(400).json({ 
+      message: "Invalid phone. Must be 07XXXXXXXX or 2547XXXXXXXX" 
+    });
   }
 
   if (isNaN(amount) || amount < 1) {
-    return res.status(400).json({ message: "Amount must be a positive integer" });
+    return res.status(400).json({ message: "Amount must be ≥ 1" });
   }
 
   try {
     const token = await getAccessToken();
     const timestamp = getTimestamp();
-    const password = Buffer.from(
-      `${process.env.MPESA_SHORTCODE}${process.env.MPESA_PASSKEY}${timestamp}`
-    ).toString("base64");
+    const password = Buffer.from(`${process.env.MPESA_SHORTCODE}${process.env.MPESA_PASSKEY}${timestamp}`).toString("base64");
 
     const stkResponse = await axios.post(
       "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
@@ -76,9 +63,9 @@ export const stkPush = async (req, res) => {
         PartyA: formattedPhone,
         PartyB: process.env.MPESA_SHORTCODE,
         PhoneNumber: formattedPhone,
-        CallBackURL: process.env.MPESA_CALLBACK_URL,
-        AccountReference: "Service Payment",
-        TransactionDesc: "Payment for services",
+        CallBackURL: process.env.MPESA_CALLBACK_URL, // Clean URL
+        AccountReference: `PROV_${providerId}`,      // Pass providerId safely
+        TransactionDesc: "Payment to Provider",
       },
       {
         headers: {
@@ -89,32 +76,76 @@ export const stkPush = async (req, res) => {
     );
 
     res.json({
-      message: "STK Push initiated",
+      success: true,
+      message: "STK Push sent successfully!",
       data: stkResponse.data,
     });
   } catch (error) {
     console.error("STK Push Error:", error.response?.data || error.message);
     res.status(500).json({
+      success: false,
       message: "STK Push failed",
-      error: error.response?.data?.errorMessage || error.message,
+      error: error.response?.data || error.message,
     });
   }
 };
 
-// STK Push Callback Controller
-export const stkCallback = (req, res) => {
+// CALLBACK — GET providerId FROM AccountReference
+export const stkCallback = async (req, res) => {
   const callbackData = req.body.Body?.stkCallback;
 
   if (!callbackData) {
-    console.log("Invalid callback data");
-    return res.status(400).json({ message: "Invalid callback data" });
+    console.log("Invalid callback payload");
+    return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
   }
 
-  console.log("STK Callback received:", JSON.stringify(callbackData, null, 2));
+  console.log("CALLBACK RECEIVED:", JSON.stringify(callbackData, null, 2));
 
-  // TODO: Process the result (e.g., save to DB)
-  // If ResultCode === 0, payment succeeded; else, failed with ResultDesc
+  const { ResultCode, ResultDesc, CallbackMetadata } = callbackData;
 
-  // Acknowledge receipt to Safaricom
-  res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+  if (ResultCode !== 0) {
+    console.log("Payment failed:", ResultDesc);
+    return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+  }
+
+  try {
+    const items = CallbackMetadata.Item;
+
+    const amount = items.find((i) => i.Name === "Amount")?.Value;
+    const mpesaReceipt = items.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
+    const phone = items.find((i) => i.Name === "PhoneNumber")?.Value;
+    const accountRef = items.find((i) => i.Name === "AccountReference")?.Value || "";
+
+    if (!accountRef.startsWith("PROV_")) {
+      console.log("Invalid AccountReference (missing PROV_):", accountRef);
+      return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+    }
+
+    const providerId = accountRef.replace("PROV_", "");
+
+    const commissionRate = 0.10;
+    const commission = Math.round(amount * commissionRate);
+    const providerAmount = amount - commission;
+
+    const payment = await Payment.create({
+      providerId,
+      amount,
+      mpesaReceipt,
+      phone,
+      commission,
+      providerAmount,
+      status: "paid",
+    });
+
+    await Provider.findByIdAndUpdate(providerId, { $inc: { walletBalance: providerAmount } });
+
+    await AdminEarnings.create({ providerId, paymentId: payment._id, amount: commission });
+
+    console.log(`Payment Success! Provider ${providerId} gets ${providerAmount}, Admin gets ${commission}`);
+
+    res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+  } catch (error) {
+    console.error("Callback processing error:", error);
+    res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+  }
 };
