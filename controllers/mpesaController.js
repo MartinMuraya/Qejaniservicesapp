@@ -27,20 +27,16 @@ export const stkPush = async (req, res) => {
   const { phone, amount } = req.body;
   const providerId = req.query.providerId?.trim();
 
-  // Validation
   if (!phone || !amount || !providerId) {
     return res.status(400).json({ message: "Phone, amount, and providerId are required" });
   }
 
-  // Phone formatting & validation
   let formattedPhone = phone.toString().replace(/\D/g, "");
   if (formattedPhone.startsWith("0")) formattedPhone = "254" + formattedPhone.slice(1);
   if (formattedPhone.startsWith("+254")) formattedPhone = formattedPhone.slice(1);
 
   if (!/^2547[1-9]\d{7}$/.test(formattedPhone)) {
-    return res.status(400).json({ 
-      message: "Invalid phone. Must be 07XXXXXXXX or 2547XXXXXXXX" 
-    });
+    return res.status(400).json({ message: "Invalid phone. Must be 07XXXXXXXX or 2547XXXXXXXX" });
   }
 
   if (isNaN(amount) || amount < 1) {
@@ -90,44 +86,72 @@ export const stkPush = async (req, res) => {
   }
 };
 
-// CALLBACK — providerId converted to ObjectId
-export const stkCallback = async (req, res) => {
-  const callbackData = req.body.Body?.stkCallback;
+// ==========================
+// FIXED & FULLY LOGGED CALLBACK
+// ==========================
+export const mpesaCallbackFix = async (req, res) => {
+  console.log("====== RAW CALLBACK RECEIVED ======");
+  console.log(JSON.stringify(req.body, null, 2));
+
+  const callbackData = req.body?.Body?.stkCallback;
 
   if (!callbackData) {
-    console.log("Invalid callback payload");
+    console.log("❌ Missing stkCallback in payload");
     return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
   }
 
-  console.log("CALLBACK RECEIVED:", JSON.stringify(callbackData, null, 2));
+  console.log("====== PARSED CALLBACK ======");
+  console.log(JSON.stringify(callbackData, null, 2));
 
   const { ResultCode, ResultDesc, CallbackMetadata } = callbackData;
 
   if (ResultCode !== 0) {
-    console.log("Payment failed:", ResultDesc);
+    console.log("❌ Payment failed:", ResultDesc);
     return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
   }
 
   try {
-    const items = CallbackMetadata.Item;
+    const items = CallbackMetadata?.Item || [];
 
-    const amount = items.find((i) => i.Name === "Amount")?.Value;
-    const mpesaReceipt = items.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
-    const phone = items.find((i) => i.Name === "PhoneNumber")?.Value;
-    const accountRef = items.find((i) => i.Name === "AccountReference")?.Value || "";
+    const amount = items.find(i => i.Name === "Amount")?.Value;
+    const mpesaReceipt = items.find(i => i.Name === "MpesaReceiptNumber")?.Value;
+    const phone = items.find(i => i.Name === "PhoneNumber")?.Value;
+    const accountRef = items.find(i => i.Name === "AccountReference")?.Value || "";
+
+    console.log("====== EXTRACTED CALLBACK DATA ======");
+    console.log({ amount, mpesaReceipt, phone, accountRef });
 
     if (!accountRef.startsWith("PROV_")) {
-      console.log("Invalid AccountReference (missing PROV_):", accountRef);
+      console.log("❌ Invalid AccountReference:", accountRef);
       return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
     }
 
-    const providerId = mongoose.Types.ObjectId(accountRef.replace("PROV_", "")); // ← FIXED
+    const providerIdString = accountRef.replace("PROV_", "").trim();
+
+    if (!mongoose.Types.ObjectId.isValid(providerIdString)) {
+      console.log("❌ Invalid providerId ObjectId:", providerIdString);
+      return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+    }
+
+    const providerId = new mongoose.Types.ObjectId(providerIdString);
 
     const commissionRate = 0.10;
     const commission = Math.round(amount * commissionRate);
     const providerAmount = amount - commission;
 
-    // Save Payment Record
+    console.log("====== CALCULATED AMOUNTS ======");
+    console.log({ amount, commission, providerAmount });
+
+    console.log("====== SAVING PAYMENT ======");
+    console.log({
+      providerId,
+      amount,
+      mpesaReceipt,
+      phone,
+      commission,
+      providerAmount
+    });
+
     const payment = await Payment.create({
       providerId,
       amount,
@@ -138,17 +162,26 @@ export const stkCallback = async (req, res) => {
       status: "paid",
     });
 
-    // Credit Provider Wallet
-    await Provider.findByIdAndUpdate(providerId, { $inc: { walletBalance: providerAmount } });
+    console.log("✅ PAYMENT SAVED:", payment);
 
-    // Record Admin Earnings
-    await AdminEarnings.create({ providerId, paymentId: payment._id, amount: commission });
+    await Provider.findByIdAndUpdate(providerId, {
+      $inc: { walletBalance: providerAmount }
+    });
 
-    console.log(`Payment Success! Provider ${providerId} gets ${providerAmount}, Admin gets ${commission}`);
+    console.log("💰 Provider wallet credited:", providerAmount);
 
-    res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+    await AdminEarnings.create({
+      providerId,
+      paymentId: payment._id,
+      amount: commission,
+    });
+
+    console.log("🏦 Admin earnings recorded:", commission);
+
+    return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+
   } catch (error) {
-    console.error("Callback processing error:", error);
-    res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+    console.log("❌ ERROR PROCESSING CALLBACK:", error);
+    return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
   }
 };
