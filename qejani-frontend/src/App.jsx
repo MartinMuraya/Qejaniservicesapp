@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
+import Layout from './components/Layout'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -9,26 +10,61 @@ import UserDashboard from './pages/UserDashboard'
 import ProviderDashboard from './pages/ProviderDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 
+// PrivateRoute — protects routes, redirects to login if not authenticated
 function PrivateRoute({ children }) {
   const { user } = useAuthStore()
-  return user ? children : <Navigate to="/login" />
+  return user ? children : <Navigate to="/login" replace />
+}
+
+// Role-based dashboard redirect
+function DashboardRedirect() {
+  const { user } = useAuthStore()
+
+  if (!user) return <Navigate to="/login" replace />
+
+  if (user.role === 'admin') return <Navigate to="/admin-dashboard" replace />
+  if (user.role === 'provider') return <Navigate to="/provider-dashboard" replace />
+  
+  return <UserDashboard />
 }
 
 function App() {
   return (
     <BrowserRouter>
-      <div class="min-h-screen bg-gray-50">
+      <Layout>
         <Routes>
+          {/* Public Routes */}
           <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
           <Route path="/service/:id" element={<ServiceDetail />} />
           <Route path="/book/:providerId" element={<BookProvider />} />
-          <Route path="/dashboard" element={<PrivateRoute><UserDashboard /></PrivateRoute>} />
-          <Route path="/provider-dashboard" element={<PrivateRoute><ProviderDashboard /></PrivateRoute>} />
-          <Route path="/admin-dashboard" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
+          
+          {/* Auth Routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* Protected Routes */}
+          <Route path="/dashboard" element={
+            <PrivateRoute>
+              <DashboardRedirect />
+            </PrivateRoute>
+          } />
+
+          <Route path="/provider-dashboard" element={
+            <PrivateRoute>
+              <ProviderDashboard />
+            </PrivateRoute>
+          } />
+
+          <Route path="/admin-dashboard" element={
+            <PrivateRoute>
+              <AdminDashboard />
+            </PrivateRoute>
+          } />
+
+          {/* Catch all — redirect to home */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </div>
+      </Layout>
     </BrowserRouter>
   )
 }

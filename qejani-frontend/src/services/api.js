@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_URL = 'http://localhost:5000/api'
+const API_URL = 'https://cfa4e238a68c.ngrok-free.app/api'
 
 export const api = {
   getServices: () => axios.get(`${API_URL}/services`),
