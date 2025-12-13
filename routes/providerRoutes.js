@@ -1,10 +1,12 @@
-// routes/providerRoutes.js
 import express from "express";
-import { getProvidersByService } from "../controllers/providerController.js";
+import {
+  getProvidersByService,
+  getProviderById
+} from "../controllers/providerController.js";
 
 const router = express.Router();
 
-// GET providers offering a specific service
 router.get("/service/:serviceId", getProvidersByService);
+router.get("/:id", getProviderById); // ✅ ADD THIS
 
 export default router;
