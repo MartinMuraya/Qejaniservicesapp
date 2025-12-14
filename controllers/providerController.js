@@ -9,9 +9,9 @@ export const getProvidersByService = async (req, res) => {
       return res.status(400).json({ message: "Invalid service ID format" });
     }
 
-    const providers = await Provider
-      .find({ service: serviceId })
-      .populate("service");
+   const providers = await Provider.find({
+  service: new mongoose.Types.ObjectId(serviceId)
+  }).populate('service');
 
     res.json(providers);
   } catch (err) {
@@ -19,6 +19,8 @@ export const getProvidersByService = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch providers for this service" });
   }
 };
+
+// getting sing provider by ID
 
 export const getProviderById = async (req, res) => {
   try {
@@ -28,9 +30,7 @@ export const getProviderById = async (req, res) => {
       return res.status(400).json({ message: "Invalid provider ID format" });
     }
 
-    const provider = await Provider
-      .findById(id)
-      .populate("service");
+    const provider = await Provider.findById(id).populate("service");
 
     if (!provider) {
       return res.status(404).json({ message: "Provider not found" });

@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_URL = 'http://localhost:5000/api'
+const API_URL = 'https://cfa4e238a68c.ngrok-free.app/api'
 
 export const api = {
   getServices: () => axios.get(`${API_URL}/services`),
@@ -10,4 +10,6 @@ export const api = {
   stkPush: (phone, amount, providerId) => axios.post(`${API_URL}/mpesa/stkpush?providerId=${providerId}`, { phone, amount }),
   getProviderPayments: (providerId) => axios.get(`${API_URL}/data/payments/provider/${providerId}`),
   getAdminEarnings: () => axios.get(`${API_URL}/data/adminEarnings`),
+  getWithdrawals: () => axios.get(`${API_URL}/admin/withdrawals`),
+
 }

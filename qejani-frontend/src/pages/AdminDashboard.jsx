@@ -63,6 +63,14 @@ export default function AdminDashboard() {
           </button>
         )}
 
+        {/* VIEW WITHDRAWALS LINK */}
+        <a
+          href="/admin/withdrawals"
+          className="inline-block mb-8 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"
+        >
+          View Withdrawals
+        </a>
+
         {/* PROVIDERS */}
         <h2 className="text-2xl font-bold mb-4">Providers</h2>
         <table className="w-full bg-white rounded shadow">
