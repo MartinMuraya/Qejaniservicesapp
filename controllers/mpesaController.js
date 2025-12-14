@@ -5,6 +5,7 @@ import Provider from "../models/Provider.js";
 import Payment from "../models/Payment.js";
 import AdminEarnings from "../models/AdminEarnings.js";
 import AdminWallet from "../models/AdminWallet.js";
+import { io } from "../server.js";
 
 // Helper: Timestamp YYYYMMDDHHmmss
 const getTimestamp = () => {
@@ -23,7 +24,7 @@ const getAccessToken = async () => {
   return res.data.access_token;
 };
 
-// STK PUSH — Works with multiple providers
+// STK PUSH
 export const stkPush = async (req, res) => {
   const { phone, amount } = req.body;
   const providerId = req.query.providerId?.trim();
@@ -88,7 +89,7 @@ export const stkPush = async (req, res) => {
 };
 
 // ==========================
-// FIXED & FULLY LOGGED CALLBACK
+// FIXED CALLBACK WITH FULL REAL-TIME UPDATE
 // ==========================
 export const mpesaCallbackFix = async (req, res) => {
   console.log("====== RAW CALLBACK RECEIVED ======");
@@ -96,9 +97,7 @@ export const mpesaCallbackFix = async (req, res) => {
 
   const callbackData = req.body?.Body?.stkCallback;
 
-  if (!callbackData) {
-    return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
-  }
+  if (!callbackData) return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
   const { ResultCode, ResultDesc, CallbackMetadata } = callbackData;
 
@@ -115,30 +114,20 @@ export const mpesaCallbackFix = async (req, res) => {
     const phone = items.find(i => i.Name === "PhoneNumber")?.Value;
     const accountRef = items.find(i => i.Name === "AccountReference")?.Value || "";
 
-    if (!accountRef.startsWith("PROV_")) {
-      return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
-    }
+    if (!accountRef.startsWith("PROV_")) return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
     const providerIdString = accountRef.replace("PROV_", "").trim();
-    if (!mongoose.Types.ObjectId.isValid(providerIdString)) {
-      return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
-    }
+    if (!mongoose.Types.ObjectId.isValid(providerIdString)) return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
     const providerId = new mongoose.Types.ObjectId(providerIdString);
 
-    // 🔹 FETCH PROVIDER (for commission rate later if needed)
     const provider = await Provider.findById(providerId);
-    if (!provider) {
-      console.log("❌ Provider not found");
-      return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
-    }
+    if (!provider) return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
-    // 🔹 COMMISSION LOGIC
     const commissionRate = provider.commissionRate || 10; // %
     const commission = Math.round(amount * (commissionRate / 100));
     const providerAmount = amount - commission;
 
-    // 🔹 SAVE PAYMENT
     const payment = await Payment.create({
       providerId,
       amount,
@@ -149,34 +138,44 @@ export const mpesaCallbackFix = async (req, res) => {
       status: "paid",
     });
 
-    // 🔹 CREDIT PROVIDER WALLET
-    await Provider.findByIdAndUpdate(providerId, {
-      $inc: { walletBalance: providerAmount }
-    });
+    // 🔹 Update provider wallet
+    const updatedProvider = await Provider.findByIdAndUpdate(
+      providerId,
+      { $inc: { walletBalance: providerAmount } },
+      { new: true }
+    );
 
-    // 🔹 ADMIN WALLET (🔥 THIS IS THE MISSING PIECE)
+    // 🔹 Update admin wallet
     let adminWallet = await AdminWallet.findOne();
-    if (!adminWallet) {
-      adminWallet = await AdminWallet.create({ balance: 0 });
-    }
-
+    if (!adminWallet) adminWallet = await AdminWallet.create({ balance: 0 });
     adminWallet.balance += commission;
     await adminWallet.save();
 
-    // 🔹 ADMIN EARNINGS (HISTORY / LEDGER)
+    // 🔹 Record admin earnings
     await AdminEarnings.create({
       providerId,
       paymentId: payment._id,
       amount: commission,
     });
 
-    console.log("✅ PAYMENT PROCESSED SUCCESSFULLY");
-    console.log({
+    console.log("✅ PAYMENT PROCESSED SUCCESSFULLY", {
       amount,
       commission,
       providerAmount,
-      adminWalletBalance: adminWallet.balance
+      adminWalletBalance: adminWallet.balance,
     });
+
+    // 🔔 Emit full provider info
+    io.emit("provider", updatedProvider);
+
+    // 🔔 Emit dashboard update
+   io.emit("dashboardUpdate", {
+  type: "payment",
+  payment,               // full payment document
+  provider: updatedProvider, // full provider info
+  adminWalletBalance: adminWallet.balance
+  });
+
 
     return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
