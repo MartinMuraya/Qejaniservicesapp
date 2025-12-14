@@ -24,6 +24,14 @@ export default function AdminDashboard() {
         <div className="text-center mb-12">
           <p className="text-2xl text-gray-600">Total Commission Earned</p>
           <p className="text-6xl font-bold text-green-600">KSh {total.toLocaleString()}</p>
+
+          {/* Withdrawals button */}
+        <a
+           href="/admin/withdrawals"
+           className="inline-block mt-6 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition"
+        >
+             View Withdrawals
+          </a>
         </div>
 
         <h2 className="text-3xl font-bold mb-6">Commission History</h2>
@@ -41,6 +49,7 @@ export default function AdminDashboard() {
               </div>
             ))}
           </div>
+          
         )}
       </div>
     </div>

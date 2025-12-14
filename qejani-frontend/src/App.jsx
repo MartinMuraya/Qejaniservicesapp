@@ -9,6 +9,7 @@ import BookProvider from './pages/BookProvider'
 import UserDashboard from './pages/UserDashboard'
 import ProviderDashboard from './pages/ProviderDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import AdminWithdrawals from "./pages/AdminWithdrawals"; 
 
 // PrivateRoute — protects routes, redirects to login if not authenticated
 function PrivateRoute({ children }) {
@@ -60,6 +61,8 @@ function App() {
               <AdminDashboard />
             </PrivateRoute>
           } />
+           
+               <Route path="/admin/withdrawals" element={<AdminWithdrawals />} />  {/* ✅ NEW */}
 
           {/* Catch all — redirect to home */}
           <Route path="*" element={<Navigate to="/" replace />} />
