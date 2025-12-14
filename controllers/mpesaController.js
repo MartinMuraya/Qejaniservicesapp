@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import Provider from "../models/Provider.js";
 import Payment from "../models/Payment.js";
 import AdminEarnings from "../models/AdminEarnings.js";
+import AdminWallet from "../models/AdminWallet.js";
 
 // Helper: Timestamp YYYYMMDDHHmmss
 const getTimestamp = () => {
@@ -96,12 +97,8 @@ export const mpesaCallbackFix = async (req, res) => {
   const callbackData = req.body?.Body?.stkCallback;
 
   if (!callbackData) {
-    console.log("❌ Missing stkCallback in payload");
     return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
   }
-
-  console.log("====== PARSED CALLBACK ======");
-  console.log(JSON.stringify(callbackData, null, 2));
 
   const { ResultCode, ResultDesc, CallbackMetadata } = callbackData;
 
@@ -118,40 +115,30 @@ export const mpesaCallbackFix = async (req, res) => {
     const phone = items.find(i => i.Name === "PhoneNumber")?.Value;
     const accountRef = items.find(i => i.Name === "AccountReference")?.Value || "";
 
-    console.log("====== EXTRACTED CALLBACK DATA ======");
-    console.log({ amount, mpesaReceipt, phone, accountRef });
-
     if (!accountRef.startsWith("PROV_")) {
-      console.log("❌ Invalid AccountReference:", accountRef);
       return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
     }
 
     const providerIdString = accountRef.replace("PROV_", "").trim();
-
     if (!mongoose.Types.ObjectId.isValid(providerIdString)) {
-      console.log("❌ Invalid providerId ObjectId:", providerIdString);
       return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
     }
 
     const providerId = new mongoose.Types.ObjectId(providerIdString);
 
-    const commissionRate = 0.10;
-    const commission = Math.round(amount * commissionRate);
+    // 🔹 FETCH PROVIDER (for commission rate later if needed)
+    const provider = await Provider.findById(providerId);
+    if (!provider) {
+      console.log("❌ Provider not found");
+      return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+    }
+
+    // 🔹 COMMISSION LOGIC
+    const commissionRate = provider.commissionRate || 10; // %
+    const commission = Math.round(amount * (commissionRate / 100));
     const providerAmount = amount - commission;
 
-    console.log("====== CALCULATED AMOUNTS ======");
-    console.log({ amount, commission, providerAmount });
-
-    console.log("====== SAVING PAYMENT ======");
-    console.log({
-      providerId,
-      amount,
-      mpesaReceipt,
-      phone,
-      commission,
-      providerAmount
-    });
-
+    // 🔹 SAVE PAYMENT
     const payment = await Payment.create({
       providerId,
       amount,
@@ -162,21 +149,34 @@ export const mpesaCallbackFix = async (req, res) => {
       status: "paid",
     });
 
-    console.log("✅ PAYMENT SAVED:", payment);
-
+    // 🔹 CREDIT PROVIDER WALLET
     await Provider.findByIdAndUpdate(providerId, {
       $inc: { walletBalance: providerAmount }
     });
 
-    console.log("💰 Provider wallet credited:", providerAmount);
+    // 🔹 ADMIN WALLET (🔥 THIS IS THE MISSING PIECE)
+    let adminWallet = await AdminWallet.findOne();
+    if (!adminWallet) {
+      adminWallet = await AdminWallet.create({ balance: 0 });
+    }
 
+    adminWallet.balance += commission;
+    await adminWallet.save();
+
+    // 🔹 ADMIN EARNINGS (HISTORY / LEDGER)
     await AdminEarnings.create({
       providerId,
       paymentId: payment._id,
       amount: commission,
     });
 
-    console.log("🏦 Admin earnings recorded:", commission);
+    console.log("✅ PAYMENT PROCESSED SUCCESSFULLY");
+    console.log({
+      amount,
+      commission,
+      providerAmount,
+      adminWalletBalance: adminWallet.balance
+    });
 
     return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 

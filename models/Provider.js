@@ -6,7 +6,9 @@ const providerSchema = new mongoose.Schema({
   service: { type: mongoose.Schema.Types.ObjectId, ref: "Service", required: true }, // ✅ ObjectId with ref
   phone: { type: String, required: true },
   price: { type: Number, required: true },
-  walletBalance: { type: Number, default: 0 }
+  walletBalance: { type: Number, default: 0 },
+   commissionRate: { type: Number, default: 10 }, // %
+  isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
 export default mongoose.model("Provider", providerSchema);

@@ -9,6 +9,10 @@ import dataRoutes from "./routes/dataRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import providerRoutes from "./routes/providerRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+import adminProviderRoutes from "./routes/adminProviderRoutes.js";
+import adminServiceRoutes from "./routes/adminServiceRoutes.js";
+import adminWithdrawalRoutes from "./routes/adminWithdrawalRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -30,6 +34,11 @@ app.use("/api/data", dataRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/providers", providerRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/admin", adminRoutes);
+
+app.use("/api/admin/providers", adminProviderRoutes);
+app.use("/api/admin/services", adminServiceRoutes);
+app.use("/api/admin/withdrawals", adminWithdrawalRoutes);
 
 // Test route
 app.get('/', (req, res) => {
