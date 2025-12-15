@@ -14,6 +14,7 @@ export const createOrder = async (req, res) => {
       user: userId,
       provider: providerId,
       service: serviceId,
+      amount: provider.price,
       status: "pending",
     });
 
