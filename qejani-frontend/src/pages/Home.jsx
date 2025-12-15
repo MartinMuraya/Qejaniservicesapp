@@ -1,23 +1,26 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { api } from '../services/api'
 
 export default function Home() {
   const [services, setServices] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/services')
-      .then(res => res.json())
-      .then(data => {
-        setServices(data)
-        setLoading(false)
-      })
-      .catch(err => {
-        toast.error('Failed to load services')
+    const fetchServices = async () => {
+      try {
+        const res = await api.getServices()  
+        setServices(res.data)               
+      } catch (err) {
         console.error(err)
+        toast.error('Failed to load services')
+      } finally {
         setLoading(false)
-      })
+      }
+    }
+
+    fetchServices()
   }, [])
 
   return (

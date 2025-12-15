@@ -2,39 +2,44 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { api } from '../services/api'  
 
 export default function ServiceDetail() {
   const { id } = useParams()
   const [providers, setProviders] = useState([])
   const [loading, setLoading] = useState(true)
+  const [serviceName, setServiceName] = useState('')
 
   useEffect(() => {
-    // First get the service name (for title)
-    fetch(`http://localhost:5000/api/services/${id}`)
-      .then(res => res.json())
-      .then(service => {
-        document.title = `${service.name} Providers - Qejani Services`
-      })
+    const fetchData = async () => {
+      try {
+        // Get service details
+        const serviceRes = await api.getServices()  // get all services
+        const service = serviceRes.data.find(s => s._id === id)
+        if (service) {
+          setServiceName(service.name)
+          document.title = `${service.name} Providers - Qejani Services`
+        }
 
-    // Get ALL providers and filter on frontend (works 100%)
-    fetch('http://localhost:5000/api/providers/service/' + id)
-      .then(res => res.json())
-      .then(data => {
-        console.log('Providers from API:', data) // you will see them here
-        setProviders(data)
+        // Get providers for this service
+        const providersRes = await api.getProvidersByService(id)
+        setProviders(providersRes.data)
+      } catch (err) {
+        console.error(err)
+        toast.error('Error loading service or providers')
+      } finally {
         setLoading(false)
-      })
-      .catch(() => {
-        toast.error('Error loading providers')
-        setLoading(false)
-      })
+      }
+    }
+
+    fetchData()
   }, [id])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 py-12">
       <div className="max-w-7xl mx-auto px-4">
         <h1 className="text-5xl font-bold text-center mb-12 text-green-800">
-          Available Providers
+          Available Providers for {serviceName}
         </h1>
 
         {loading ? (

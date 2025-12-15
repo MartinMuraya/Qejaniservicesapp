@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { api } from "../api"; 
+import { api } from "../services/api"; 
 
 export default function AdminWithdrawals() {
   const [withdrawals, setWithdrawals] = useState([]);

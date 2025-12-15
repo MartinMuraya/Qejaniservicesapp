@@ -10,6 +10,14 @@ export default function BookProvider() {
   const [loading, setLoading] = useState(true)
   const [payLoading, setPayLoading] = useState(false)
 
+  // Check if user is logged in
+  const token = localStorage.getItem('token')
+  if (!token) {
+    toast.error('You must be logged in to book a service!')
+    return <Navigate to="/login" replace />
+  }
+
+  
   useEffect(() => {
     // Fetch provider details
     fetch(`http://localhost:5000/api/providers/${providerId}`)

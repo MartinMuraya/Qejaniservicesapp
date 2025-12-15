@@ -10,12 +10,7 @@ import UserDashboard from './pages/UserDashboard'
 import ProviderDashboard from './pages/ProviderDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminWithdrawals from "./pages/AdminWithdrawals"; 
-
-// PrivateRoute — protects routes, redirects to login if not authenticated
-function PrivateRoute({ children }) {
-  const { user } = useAuthStore()
-  return user ? children : <Navigate to="/login" replace />
-}
+import PrivateRoute from "./components/PrivateRoute";
 
 // Role-based dashboard redirect
 function DashboardRedirect() {
@@ -37,7 +32,14 @@ function App() {
           {/* Public Routes */}
           <Route path="/" element={<Home />} />
           <Route path="/service/:id" element={<ServiceDetail />} />
-          <Route path="/book/:providerId" element={<BookProvider />} />
+          <Route 
+            path="/book/:providerId" 
+              element={
+              <PrivateRoute>
+               <BookProvider />
+              </PrivateRoute>
+            } 
+          />
           
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
@@ -62,8 +64,15 @@ function App() {
             </PrivateRoute>
           } />
            
-               <Route path="/admin/withdrawals" element={<AdminWithdrawals />} />  {/* ✅ NEW */}
-
+          <Route
+            path="/admin/withdrawals"
+               element={
+            <PrivateRoute>
+              <AdminWithdrawals />
+            </PrivateRoute>
+            }
+          />
+          
           {/* Catch all — redirect to home */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
