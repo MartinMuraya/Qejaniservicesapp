@@ -13,59 +13,74 @@ export default function AdminDashboard() {
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
-    loadDashboard();
+  loadDashboard();
 
-    // Connect to Socket.IO server
-    const socket = io("http://localhost:5000"); // replace with your server URL if different
+  const socket = io("http://localhost:5000"); // your server URL
 
-    socket.on("dashboardUpdate", (data) => {
-      switch (data.type) {
-        case "payment":
-          setEarnings((prev) => [data.payment, ...prev]);
-          break;
-        case "withdrawal":
-          setWithdrawals((prev) => [data.withdrawal, ...prev]);
-          break;
-        case "provider":
-          setProviders((prev) => {
-            const idx = prev.findIndex((p) => p._id === data.provider._id);
-            if (idx !== -1) {
-              const copy = [...prev];
-              copy[idx] = data.provider;
-              return copy;
-            }
-            return [data.provider, ...prev];
-          });
-          break;
-        case "wallet":
-          setWallet(data.balance);
-          break;
-        default:
-          break;
-      }
-    });
+  // Connection events
+  socket.on("connect", () => {
+    console.log("✅ Connected to Socket.IO server:", socket.id);
+  });
 
-    return () => socket.disconnect();
-  }, []);
+  socket.on("disconnect", (reason) => {
+    console.log("❌ Disconnected from Socket.IO server:", reason);
+  });
+
+  socket.on("connect_error", (err) => {
+    console.error("⚠️ Socket.IO connection error:", err);
+  });
+
+  // Dashboard update events
+  socket.on("dashboardUpdate", (data) => {
+    switch (data.type) {
+      case "payment":
+        setEarnings((prev) => [data.payment, ...prev]);
+        break;
+      case "withdrawal":
+        setWithdrawals((prev) => [data.withdrawal, ...prev]);
+        break;
+      case "provider":
+        setProviders((prev) => {
+          const idx = prev.findIndex((p) => p._id === data.provider._id);
+          if (idx !== -1) {
+            const copy = [...prev];
+            copy[idx] = data.provider;
+            return copy;
+          }
+          return [data.provider, ...prev];
+        });
+        break;
+      case "wallet":
+        setWallet(data.balance);
+        break;
+      default:
+        break;
+    }
+  });
+
+  return () => socket.disconnect();
+}, []);
 
   const loadDashboard = async () => {
     try {
-      const [earningsRes, providersRes, walletRes, withdrawalsRes] =
-        await Promise.all([
-          api.getAdminEarnings(),
-          fetch("/api/admin/providers").then((r) => r.json()),
-          fetch("/api/admin/wallet").then((r) => r.json()),
-          fetch("/api/admin/withdrawals").then((r) => r.json()),
-        ]);
+      setLoading(true);
+
+      const [earningsRes, providersRes, walletRes, withdrawalsRes] = await Promise.all([
+        api.getAdminEarnings(),
+        api.getAdminProviders(),
+        api.getAdminWallet(),
+        api.getAdminWithdrawals(),
+      ]);
 
       setEarnings(earningsRes.data);
-      setProviders(providersRes);
-      setWallet(walletRes.balance);
-      setWithdrawals(withdrawalsRes);
+      setProviders(providersRes.data); // axios returns { data }
+      setWallet(walletRes.data.balance);
+      setWithdrawals(withdrawalsRes.data);
       setLoading(false);
     } catch (err) {
       console.error(err);
       toast.error("Failed to load dashboard");
+      setLoading(false);
     }
   };
 
@@ -82,18 +97,13 @@ export default function AdminDashboard() {
 
     try {
       setWithdrawing(true);
-      const res = await fetch("/api/admin/withdraw", {
-        method: "POST",
-        body: JSON.stringify({ phone }),
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await res.json();
+      const res = await api.withdrawAdminWallet(phone);
 
-      if (data.success) {
+      if (res.data.success) {
         toast.success(`Withdrawal of KSh ${wallet} sent!`);
         loadDashboard(); // refresh immediately
       } else {
-        toast.error("Withdrawal failed");
+        toast.error(res.data.message || "Withdrawal failed");
       }
     } catch (err) {
       console.error(err);
