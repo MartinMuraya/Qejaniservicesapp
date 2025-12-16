@@ -1,7 +1,11 @@
 // src/pages/BookProvider.jsx
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Navigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { io } from 'socket.io-client'
+
+// Connect to backend socket
+const socket = io('http://localhost:5000') // adjust
 
 export default function BookProvider() {
   const { providerId } = useParams()
@@ -9,79 +13,111 @@ export default function BookProvider() {
   const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(true)
   const [payLoading, setPayLoading] = useState(false)
+  const [finishLoading, setFinishLoading] = useState(false)
+  const [payment, setPayment] = useState(null)
 
-  // Check if user is logged in
   const token = localStorage.getItem('token')
   if (!token) {
     toast.error('You must be logged in to book a service!')
     return <Navigate to="/login" replace />
   }
 
-  
   useEffect(() => {
-    // Fetch provider details
-    fetch(`http://localhost:5000/api/providers/${providerId}`)
-      .then(res => res.json())
-      .then(data => {
+    const fetchProvider = async () => {
+      try {
+        const res = await fetch(`http://localhost:5000/api/providers/${providerId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.message || 'Failed to fetch provider')
         setProvider(data)
+      } catch (err) {
+        console.error(err)
+        toast.error(err.message || 'Failed to load provider')
+      } finally {
         setLoading(false)
-      })
-      .catch(err => {
-        toast.error('Failed to load provider')
-        setLoading(false)
-      })
-  }, [providerId])
+      }
+    }
+    fetchProvider()
+  }, [providerId, token])
+
+  useEffect(() => {
+    // Listen for provider wallet updates in real-time
+    socket.on('provider', (updatedProvider) => {
+      if (updatedProvider._id === providerId) setProvider(updatedProvider)
+    })
+
+    // Listen for dashboard/payment updates
+    socket.on('dashboardUpdate', (data) => {
+      if (data.type === 'paymentCompleted' && payment && data.payment._id === payment.paymentId) {
+        toast.success('Payment released to provider successfully (real-time)!')
+        setPayment(null) // reset payment state
+      }
+    })
+
+    return () => {
+      socket.off('provider')
+      socket.off('dashboardUpdate')
+    }
+  }, [providerId, payment])
 
   const handlePay = async () => {
     if (!phone) return toast.error('Enter your phone number')
-    if (!phone.startsWith('254') || phone.length !== 12) return toast.error('Use format 2547XXXXXXXX')
+    if (!/^2547\d{8}$/.test(phone)) return toast.error('Use format 2547XXXXXXXX')
 
     setPayLoading(true)
-
     try {
-      // Create real order
-      const orderRes = await fetch('http://localhost:5000/api/orders', {
+      const res = await fetch(`http://localhost:5000/api/mpesa/stkpush?providerId=${providerId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` // if you have auth
+          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          providerId,
-          serviceId: provider.service._id // real service ID
-        })
+        body: JSON.stringify({ phone, amount: provider.price })
       })
-
-      const orderData = await orderRes.json()
-
-      if (!orderRes.ok) throw new Error(orderData.message || 'Order failed')
-
-      // Trigger M-Pesa STK Push with real amount
-      const mpesaRes = await fetch(`http://localhost:5000/api/mpesa/stkpush?providerId=${providerId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone,
-          amount: provider.price // real provider price
-        })
-      })
-
-      const mpesaData = await mpesaRes.json()
-
-      if (mpesaRes.ok) {
-        toast.success(mpesaData.message || 'Check your phone for M-Pesa prompt!')
+      const data = await res.json()
+      if (res.ok && data.success) {
+        toast.success(data.message || 'Check your phone for M-Pesa prompt!')
+        setPayment({ paymentId: data.data.CheckoutRequestID }) // store payment ID for finish
       } else {
-        toast.error(mpesaData.message || 'Payment request failed')
+        toast.error(data.message || 'Payment request failed')
       }
     } catch (err) {
+      console.error(err)
       toast.error(err.message || 'Something went wrong')
     } finally {
       setPayLoading(false)
     }
   }
 
-  if (loading) return <div className="text-center py-20">Loading provider...</div>
+  const handleFinishService = async () => {
+    if (!payment || !payment.paymentId) return toast.error('No payment to finish')
+    setFinishLoading(true)
+    try {
+      const res = await fetch('http://localhost:5000/api/mpesa/finish-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ paymentId: payment.paymentId })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        toast.success('Payment released to provider successfully!')
+        setPayment(null)
+      } else {
+        toast.error(data.message || 'Failed to finish payment')
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error(err.message || 'Something went wrong')
+    } finally {
+      setFinishLoading(false)
+    }
+  }
 
+  if (loading) return <div className="text-center py-20">Loading provider...</div>
   if (!provider) return <div className="text-center py-20">Provider not found</div>
 
   return (
@@ -97,27 +133,43 @@ export default function BookProvider() {
           </p>
         </div>
 
-        <div className="mb-8">
-          <label className="block text-lg font-medium mb-3">Your M-Pesa Phone Number</label>
-          <input
-            type="text"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="254712345678"
-            className="w-full px-6 py-4 border-2 border-gray-300 rounded-xl focus:border-green-600 focus:outline-none text-lg"
-          />
-        </div>
+        {!payment && (
+          <>
+            <div className="mb-8">
+              <label className="block text-lg font-medium mb-3">Your M-Pesa Phone Number</label>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="254712345678"
+                className="w-full px-6 py-4 border-2 border-gray-300 rounded-xl focus:border-green-600 focus:outline-none text-lg"
+              />
+            </div>
 
-        <button
-          onClick={handlePay}
-          disabled={payLoading}
-          className="w-full bg-green-600 text-white py-5 rounded-xl font-bold text-xl hover:bg-green-700 transition disabled:opacity-70"
-        >
-          {payLoading ? 'Processing...' : 'Pay with M-Pesa'}
-        </button>
+            <button
+              onClick={handlePay}
+              disabled={payLoading}
+              className="w-full bg-green-600 text-white py-5 rounded-xl font-bold text-xl hover:bg-green-700 transition disabled:opacity-70"
+            >
+              {payLoading ? 'Processing...' : 'Pay with M-Pesa'}
+            </button>
+          </>
+        )}
+
+        {payment && (
+          <button
+            onClick={handleFinishService}
+            disabled={finishLoading}
+            className="w-full bg-blue-600 text-white py-5 rounded-xl font-bold text-xl hover:bg-blue-700 transition disabled:opacity-70 mt-6"
+          >
+            {finishLoading ? 'Releasing Payment...' : 'Finish Service & Release Payment'}
+          </button>
+        )}
 
         <p className="text-center mt-6 text-sm text-gray-600">
-          You will receive an M-Pesa prompt to complete payment of KSh {provider.price}
+          {payment
+            ? 'Service booked. Click "Finish Service" when the provider completes the task.'
+            : `You will receive an M-Pesa prompt to complete payment of KSh ${provider.price}`}
         </p>
       </div>
     </div>
