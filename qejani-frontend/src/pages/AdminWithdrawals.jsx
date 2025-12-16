@@ -1,22 +1,31 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { api } from "../services/api"; 
+import { api } from "../services/api";
+import { useAuthStore } from "../store/authStore";
 
 export default function AdminWithdrawals() {
   const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { logout, user } = useAuthStore();
 
   useEffect(() => {
-    fetchWithdrawals();
-  }, []);
+    if (user) fetchWithdrawals(); // Only fetch if user is logged in
+  }, [user]);
 
   const fetchWithdrawals = async () => {
     try {
       setLoading(true);
-      const res = await api.getWithdrawals(); 
+      const res = await api.getAdminWithdrawals();
       setWithdrawals(res.data);
     } catch (err) {
-      toast.error("Failed to load withdrawals");
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        toast.error("Session expired or not authorized. Please log in again.");
+        logout();
+        window.location.href = "/login"; // redirect after logout
+      } else {
+        toast.error("Failed to load withdrawals");
+        console.error(err);
+      }
     } finally {
       setLoading(false);
     }

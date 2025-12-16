@@ -2,17 +2,18 @@ import axios from "axios";
 
 const API_URL = "http://localhost:5000/api";
 
-// Axios instance with token automatically attached
-const token = localStorage.getItem("token");
-
 const apiInstance = axios.create({
   baseURL: API_URL,
-  headers: {
-    Authorization: token ? `Bearer ${token}` : "",
-  },
 });
 
-// --- User & Orders ---
+apiInstance.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export const api = {
   getServices: () => apiInstance.get("/services"),
   getProvidersByService: (serviceId) => apiInstance.get(`/providers/service/${serviceId}`),
@@ -32,3 +33,5 @@ export const api = {
   getAdminWithdrawals: () => apiInstance.get("/admin/withdrawals"),
   withdrawAdminWallet: (phone) => apiInstance.post("/admin/withdraw", { phone }),
 };
+
+export default api;

@@ -5,6 +5,10 @@ export default function Layout({ children }) {
   const { user, logout } = useAuthStore()
   const location = useLocation()
 
+  if (user === undefined) {
+    return <p>Loading...</p> 
+  }
+
   const handleLogout = () => {
     logout()
     window.location.href = '/login'
