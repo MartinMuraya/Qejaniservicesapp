@@ -1,5 +1,7 @@
 import AdminWallet from "../models/AdminWallet.js";
-import Withdrawal from "../models/Withdrawal.js"; // optional for now
+import Withdrawal from "../models/Withdrawal.js";
+import Provider from "../models/Provider.js";
+import Payment from "../models/Payment.js";
 
 // GET ADMIN WALLET BALANCE
 export const getAdminWallet = async (req, res) => {
@@ -28,13 +30,49 @@ export const withdrawAdminWallet = async (req, res) => {
     wallet.balance = 0;
     await wallet.save();
 
+    // Optionally create a withdrawal record
+    await Withdrawal.create({
+      amount,
+      phone: req.body.phone,
+      status: "pending",
+    });
+
     res.json({
       success: true,
       message: "Withdrawal successful",
-      amount
+      amount,
     });
-
   } catch (err) {
     res.status(500).json({ message: "Withdrawal failed" });
+  }
+};
+
+// GET ALL PROVIDERS
+export const getAdminProviders = async (req, res) => {
+  try {
+    const providers = await Provider.find().populate("service");
+    res.json(providers);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch providers" });
+  }
+};
+
+// GET ALL ADMIN EARNINGS
+export const getAdminEarnings = async (req, res) => {
+  try {
+    const earnings = await Payment.find().populate("providerId");
+    res.json(earnings);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch earnings" });
+  }
+};
+
+// GET ALL WITHDRAWALS
+export const getAdminWithdrawals = async (req, res) => {
+  try {
+    const withdrawals = await Withdrawal.find();
+    res.json(withdrawals);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch withdrawals" });
   }
 };

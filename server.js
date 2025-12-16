@@ -19,7 +19,7 @@ import adminWithdrawalRoutes from "./routes/adminWithdrawalRoutes.js";
 dotenv.config();
 const app = express();
 
-// Create HTTP server and Socket.IO instance
+// HTTP server and Socket.IO instance
 const server = http.createServer(app);
 export const io = new Server(server, {
   cors: {
