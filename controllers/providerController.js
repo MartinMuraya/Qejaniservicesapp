@@ -42,3 +42,40 @@ export const getProviderById = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch provider" });
   }
 };
+
+export const getProvidersNearUser = async (req, res) => {
+  try {
+    const { lat, lng, radius = 5000, serviceId } = req.query;
+
+    if (!lat || !lng) {
+      return res.status(400).json({ message: "Location required" });
+    }
+
+    const query = {
+      isActive: true,
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [parseFloat(lng), parseFloat(lat)]
+          },
+          $maxDistance: parseInt(radius)
+        }
+      }
+    };
+
+    if (serviceId) {
+      query.service = serviceId;
+    }
+
+    const providers = await Provider
+      .find(query)
+      .populate("service");
+
+    res.json(providers);
+  } catch (err) {
+    console.error("Nearby providers error:", err);
+    res.status(500).json({ message: "Failed to fetch nearby providers" });
+  }
+};
+
