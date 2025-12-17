@@ -91,7 +91,7 @@ export default function Register() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-primary text-blue py-5 rounded-xl font-bold text-xl hover:bg-accent transition disabled:opacity-70 shadow-lg"
+            className="w-full bg-green-600 text-blue py-5 rounded-xl font-bold text-xl hover:bg-accent transition disabled:opacity-70 shadow-lg"
           >
             {isLoading ? 'Creating Account...' : 'Register'}
           </button>
