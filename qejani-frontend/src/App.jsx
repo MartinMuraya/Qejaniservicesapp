@@ -25,6 +25,7 @@ import Settings from "./pages/Settings";
 import AboutUs from "./pages/AboutUs";
 import Contact from "./pages/Contact";
 import OrderSuccess from "./pages/OrderSuccess";
+import Services from "./pages/Services";
 
 
 // Role-based dashboard redirect
@@ -46,6 +47,7 @@ function App() {
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Home />} />
+          <Route path="/services" element={<Services />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/service/:id" element={<ServiceDetail />} />
